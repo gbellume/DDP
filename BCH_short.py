@@ -57,7 +57,7 @@ def decode_sector(data: bytes, oob: bytes):
 # ==========================================
 # QUICK TEST (Injection of 8 errors)
 # ==========================================
-if __name__ == "__main__":
+if __name__ == "__main__": # This block will run when the script is executed directly
     # Generate 1162 random bytes
     original_data = bytes(random.choices(range(256), k=DATA_SIZE))
     
