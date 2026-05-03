@@ -10,3 +10,6 @@ nbproject/private/
 *.elf
 *.o
 *.a
+*.log
+*.log.inx
+mcc-manifest-autosave.yml
