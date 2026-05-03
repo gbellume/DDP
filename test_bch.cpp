@@ -6,11 +6,12 @@
  * Run:
  *   ./test_bch
  * Plot:
- *   python3 plot.py
+ *   python plot_EDAC_C.py
  */
 
 #include <cstdint>
 #include <cstdio>
+#include <map>
 #include <random>
 #include <vector>
 
@@ -61,7 +62,8 @@ int main() {
 
     std::mt19937_64 rng(std::random_device{}());
 
-    struct Stats { int total = 0, corrected = 0, failed = 0; };
+    struct Stats { int total = 0, corrected = 0, failed = 0;
+                      long long effective_sum = 0; };
     std::vector<Stats> stats(MAX_FLIPS + 1);
 
     std::printf("BCH stress test — %d bytes/parola, %d parole/scenario\n\n",
@@ -82,14 +84,16 @@ int main() {
             int     cw_len   = codeword.bit_length();
 
             // ── Corrompi: flip_count volte (duplicati ammessi, come Python) ────
-            // Se la stessa posizione viene estratta due volte i flip si annullano,
-            // riducendo il numero di errori effettivi — comportamento identico al
-            // codice Python originale.
             BigPoly corrupted = codeword;
+            int effective_flips = 0;
             {
                 std::uniform_int_distribution<int> bit_dist(0, cw_len - 1);
+                std::map<int,int> flip_count_map;
                 for (int k = 0; k < flip_count; ++k)
-                    flip_bit(corrupted, bit_dist(rng));
+                    flip_count_map[bit_dist(rng)]++;
+                for (auto& [pos, cnt] : flip_count_map) {
+                    if (cnt % 2 == 1) { flip_bit(corrupted, pos); ++effective_flips; }
+                }
             }
 
             // ── Decodifica ───────────────────────────────────────────────────
@@ -101,23 +105,25 @@ int main() {
             for (int p : err_pos) flip_bit(corrected, p);
 
             ++s.total;
+            s.effective_sum += effective_flips;
             if (corrected == codeword) ++s.corrected;
             else                       ++s.failed;
         }
     }
 
     // ── Tabella risultati ────────────────────────────────────────────────────
-    std::printf("%-10s  %8s  %10s  %8s  %s\n",
-                "Flips", "Total", "Corrected", "Failed", "Result");
-    std::printf("%-10s  %8s  %10s  %8s  %s\n",
-                "-----", "-----", "---------", "------", "------");
+    std::printf("%-6s  %8s  %10s  %8s  %8s  %s\n",
+                "Flips", "Total", "Corrected", "Failed", "Avg.eff", "Result");
+    std::printf("%-6s  %8s  %10s  %8s  %8s  %s\n",
+                "-----", "-----", "---------", "------", "-------", "------");
     for (int f = 0; f <= MAX_FLIPS; ++f) {
         const Stats& s = stats[f];
+        double avg_eff = s.total > 0 ? (double)s.effective_sum / s.total : 0.0;
         const char* res = (f <= t)
-            ? (s.failed == 0 ? "OK (within t)" : "UNEXPECTED FAILURE")
-            : (s.corrected == 0 ? "OK (beyond t, uncorrectable)" : "UNEXPECTED CORRECTION");
-        std::printf("%-10d  %8d  %10d  %8d  %s\n",
-                    f, s.total, s.corrected, s.failed, res);
+            ? (s.failed == 0 ? "OK" : "UNEXPECTED FAILURE")
+            : (s.corrected == 0 ? "OK (uncorrectable)" : "accidental (eff.flips < t)");
+        std::printf("%-6d  %8d  %10d  %8d  %8.3f  %s\n",
+                    f, s.total, s.corrected, s.failed, avg_eff, res);
     }
 
     // ── CSV per plot.py ──────────────────────────────────────────────────────
